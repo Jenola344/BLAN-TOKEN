@@ -13,6 +13,14 @@
 | **Blockchain** | Base |
 | **Standard** | ERC-20 |
 
+## BLAN Token Deployed
+
+**on Mainnet** : 
+Successfully generated matching Bytecode and ABI for Contract Address [0x8d75935f78fcd5e0fbf532be84d0089dc7f1a6c2]
+https://basescan.org/verifyContract-solc?a=0x8d75935f78fcd5e0fbf532be84d0089dc7f1a6c2&c=v0.8.30%2bcommit.73712a01&lictype=3
+
+**on Testnet** : Successfully generated matching Bytecode and ABI for Contract Address [0x116e18938fb5e1586b5781ecc6178daafa191138]
+https://sepolia.basescan.org/verifyContract-solc?a=0x116e18938fb5e1586b5781ecc6178daafa191138&c=v0.8.30%2bcommit.73712a01&lictype=3
 
 ## 🔧 Deployment
 
