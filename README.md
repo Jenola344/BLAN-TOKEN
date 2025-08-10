@@ -211,3 +211,6 @@ This smart contract is provided as-is. While extensively tested and following se
 ---
 
 **Built with ❤️ for the Base ecosystem**
+
+
+ready to use
