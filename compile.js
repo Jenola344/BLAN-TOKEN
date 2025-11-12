@@ -3,35 +3,26 @@ const path = require('path');
 const fs = require('fs');
 const solc = require('solc');
 
-const contractPath = path.resolve(__dirname, 'BLAN Token.sol');
+const contractPath = path.resolve(__dirname, 'BLAN_Token_flat.sol');
 const source = fs.readFileSync(contractPath, 'utf8');
 
 const input = {
     language: 'Solidity',
     sources: {
-        'BLAN Token.sol': {
+        'BLAN_Token_flat.sol': {
             content: source,
         },
     },
     settings: {
         outputSelection: {
             '*': {
-                '*': ['abi'], // Only need ABI
+                '*': ['abi'], 
             },
         },
     },
 };
 
-function findImports(importPath) {
-    // Check for direct imports from node_modules
-    const nodeModulesPath = path.resolve(__dirname, 'node_modules', importPath);
-    if (fs.existsSync(nodeModulesPath)) {
-        return { contents: fs.readFileSync(nodeModulesPath, 'utf8') };
-    }
-    return { error: 'File not found' };
-}
-
-const output = JSON.parse(solc.compile(JSON.stringify(input), { import: findImports }));
+const output = JSON.parse(solc.compile(JSON.stringify(input)));
 
 if (output.errors) {
     console.error('Compilation failed:');
@@ -48,7 +39,7 @@ if (output.errors) {
 }
 
 const contractName = 'BLANToken';
-const contractFileName = 'BLAN Token.sol';
+const contractFileName = 'BLAN_Token_flat.sol';
 const contract = output.contracts[contractFileName][contractName];
 
 if (!contract || !contract.abi) {
