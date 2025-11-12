@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLAN Token Miner</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>BLAN Token Miner</h1>
+        <button id="connectButton">Connect Wallet</button>
+        <div id="userInfo" style="display: none;">
+            <p><strong>Address:</strong> <span id="userAddress"></span></p>
+            <p><strong>BLAN Balance:</strong> <span id="userBalance"></span></p>
+        </div>
+        <button id="mineButton" style="display: none;">Mine BLAN</button>
+        <p id="miningStatus"></p>
+    </div>
+
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
