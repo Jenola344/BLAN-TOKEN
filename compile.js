@@ -1,4 +1,3 @@
-
 const path = require('path');
 const fs = require('fs');
 const solc = require('solc');
@@ -19,10 +18,22 @@ const input = {
                 '*': ['*'],
             },
         },
+        remappings: [
+            '@openzeppelin/=' + path.resolve(__dirname, 'node_modules', '@openzeppelin') + '/',
+        ],
     },
 };
 
-const output = JSON.parse(solc.compile(JSON.stringify(input)));
+function findImports(importPath) {
+    const importFullPath = path.resolve(__dirname, 'node_modules', importPath);
+    if (fs.existsSync(importFullPath)) {
+        return { contents: fs.readFileSync(importFullPath, 'utf8') };
+    } else {
+        return { error: 'File not found' };
+    }
+}
+
+const output = JSON.parse(solc.compile(JSON.stringify(input), { import: findImports }));
 
 const contract = output.contracts['BLAN Token.sol']['BLANToken'];
 
