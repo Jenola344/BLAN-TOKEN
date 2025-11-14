@@ -1,216 +1,159 @@
-# BLAN Token 🪙
+# BLAN Token
 
-**BLAN** is a secure, efficient ERC-20 token built for the Base blockchain with automatic liquidity allocation and advanced security features.
+An ERC-20 token implementation on Base with integrated mining mechanics and liquidity management.
 
-## 📋 Token Specifications
+## Contract Details
 
-| Property | Value |
-|----------|--------|
-| **Name** | BLAN |
-| **Symbol** | BLAN |
-| **Decimals** | 18 |
-| **Total Supply** | 10,000,000 BLAN |
-| **Blockchain** | Base |
-| **Standard** | ERC-20 |
+**Mainnet (Base):** `0x8d75935f78fcd5e0fbf532be84d0089dc7f1a6c2`  
+**Testnet (Base Sepolia):** `0x116e18938fb5e1586b5781ecc6178daafa191138`
 
-## BLAN Token Deployed
+| Parameter | Value |
+|-----------|-------|
+| Name | BLAN |
+| Symbol | BLAN |
+| Decimals | 18 |
+| Total Supply | 10,000,000 |
+| Compiler | Solidity 0.8.30 |
+| License | MIT |
 
-**on Mainnet** : 
-Successfully generated matching Bytecode and ABI for Contract Address [0x8d75935f78fcd5e0fbf532be84d0089dc7f1a6c2]
-https://basescan.org/verifyContract-solc?a=0x8d75935f78fcd5e0fbf532be84d0089dc7f1a6c2&c=v0.8.30%2bcommit.73712a01&lictype=3
+## What This Is
 
-**on Testnet** : Successfully generated matching Bytecode and ABI for Contract Address [0x116e18938fb5e1586b5781ecc6178daafa191138]
-https://sepolia.basescan.org/verifyContract-solc?a=0x116e18938fb5e1586b5781ecc6178daafa191138&c=v0.8.30%2bcommit.73712a01&lictype=3
+BLAN is an ERC-20 token with two extensions: a mining mechanism that lets holders stake tokens to earn rewards, and automated liquidity allocation on deployment. It's built on Base using OpenZeppelin's audited contract libraries.
 
-## 🔧 Deployment
+The mining feature isn't proof-of-work in the traditional sense—it's a time-locked staking system where users lock tokens for a period and receive newly minted tokens as rewards. The "mining" terminology is somewhat misleading but reflects the intended user experience.
 
-### Deploy to Base Mainnet
+## Architecture
 
-```bash
-# Set environment variables
-export PRIVATE_KEY="your-private-key"
-export LIQUIDITY_WALLET="0x..." # Replace with actual liquidity wallet address
-export BASE_RPC_URL="https://mainnet.base.org"
+The contract inherits from:
+- `ERC20` - Standard token functionality
+- `Ownable` - Access control for admin functions
+- `ReentrancyGuard` - Protection against reentrancy attacks
 
-# Deploy using Hardhat
-npx hardhat run scripts/deploy.js --network base
+Key design decisions:
+- Immutable liquidity wallet address (set at deployment, cannot change)
+- Automatic transfer of 500k tokens to liquidity on deployment
+- Owner-controlled mining difficulty and emergency mint (capped at 1M per call)
+- No proxy pattern—this is a fixed implementation
 
-# Deploy using Foundry
-forge create --rpc-url $BASE_RPC_URL \
-  --private-key $PRIVATE_KEY \
-  src/BLANToken.sol:BLANToken \
-  --constructor-args $LIQUIDITY_WALLET
-```
-
-### Deploy to Base Testnet (Sepolia)
-
-```bash
-export BASE_SEPOLIA_RPC_URL="https://sepolia.base.org"
-
-# Deploy to testnet
-npx hardhat run scripts/deploy.js --network base-sepolia
-```
-
-## 📊 Contract Features
-
-### Core Functions
-
-#### Standard ERC-20 Functions
-- `transfer(address to, uint256 amount)` - Transfer tokens
-- `transferFrom(address from, address to, uint256 amount)` - Transfer tokens on behalf
-- `approve(address spender, uint256 amount)` - Approve spending allowance
-- `balanceOf(address account)` - Check token balance
-- `allowance(address owner, address spender)` - Check spending allowance
-
-#### Enhanced Security Functions
-- Enhanced `transfer()` and `transferFrom()` with additional safety checks
-- Protection against zero address and contract address transfers
-
-#### Token Management
-- `burn(uint256 amount)` - Burn tokens from caller's balance
-- `burnFrom(address from, uint256 amount)` - Burn tokens from approved account
-- `emergencyMint(address to, uint256 amount)` - Owner-only emergency minting (max 1M per call)
-
-#### Utility Functions
-- `getContractInfo()` - Returns contract details
-- `hasSufficientBalance(address account, uint256 amount)` - Check balance sufficiency
-- `recoverERC20(address tokenAddress, uint256 amount)` - Recover accidentally sent tokens
-
-### Automatic Features
-
-Upon deployment, the contract automatically:
-1. **Mints** 10,000,000 BLAN to the deployer's address
-2. **Transfers** 500,000 BLAN to the designated liquidity wallet
-3. **Emits** deployment and liquidity allocation events
-
-## 🔐 Security Features
-
-### Input Validation
-- Zero address protection on all transfers
-- Contract address transfer prevention
-- Parameter validation on all functions
-
-### Access Control
-- **Ownable**: Critical functions restricted to contract owner
-- **ReentrancyGuard**: Protection against reentrancy attacks
-- **Immutable Liquidity Wallet**: Cannot be changed after deployment
-
-### Best Practices
-- Uses OpenZeppelin's battle-tested contracts
-- Comprehensive event emissions
-- Gas-optimized operations
-- No backdoors or unnecessary privileges
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-npx hardhat test
-
-# Run specific test file
-npx hardhat test test/BLANToken.test.js
-
-# Check test coverage
-npx hardhat coverage
-```
-
-### Test Cases Covered
-- Deployment and initial allocation
-- Standard ERC-20 functionality
-- Security validations
-- Access control
-- Burn functionality
-- Emergency mint restrictions
-- Token recovery
-
-## 📈 Gas Optimization
-
-The contract implements several gas optimization techniques:
-
-- **Immutable Variables**: `liquidityWallet` saved as immutable
-- **Constants**: Supply values stored as constants
-- **Minimal Storage**: Reduces unnecessary storage operations
-- **Efficient Events**: Proper event emission without gas waste
-
-### Estimated Gas Costs (Base Network)
-- **Deployment**: ~1,200,000 gas
-- **Transfer**: ~21,000 gas
-- **Approve**: ~46,000 gas
-- **Burn**: ~29,000 gas
-
-## 🌐 Network Configuration
-
-### Base Mainnet
-- **Chain ID**: 8453
-- **RPC URL**: https://mainnet.base.org
-- **Block Explorer**: https://basescan.org
-
-### Base Sepolia Testnet
-- **Chain ID**: 84532
-- **RPC URL**: https://sepolia.base.org
-- **Block Explorer**: https://sepolia.basescan.org
-- **Faucet**: https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet
-
-## 🔍 Contract Verification
-
-### Verify on BaseScan
-
-```bash
-npx hardhat verify --network base <CONTRACT_ADDRESS> <LIQUIDITY_WALLET_ADDRESS>
-```
-
-### Manual Verification
-1. Go to [BaseScan](https://basescan.org)
-2. Navigate to your contract address
-3. Click "Verify and Publish"
-4. Select "Solidity (Single File)"
-5. Upload the flattened contract code
-6. Set compiler version: v0.8.19
-7. Set optimization: Yes (200 runs)
-8. Add constructor arguments (ABI-encoded liquidity wallet address)
+The liquidity wallet address is immutable after deployment. Choose carefully.
 
 
+## Mining Mechanism
 
-## 🛡️ Security Audit Checklist
+The mining system works like this:
 
-- [x] Uses OpenZeppelin contracts
-- [x] No integer overflow/underflow (Solidity 0.8.19+)
-- [x] Reentrancy protection implemented
-- [x] Access control properly configured
-- [x] Input validation on all functions
-- [x] Event emissions for transparency
-- [x] No backdoors or hidden mint functions
-- [x] Proper error handling with descriptive messages
+1. User calls `startMining(amount)` with tokens they want to stake
+2. Tokens are transferred to the contract and locked
+3. After the mining period elapses, user calls `completeMining()`
+4. Tokens are unlocked and returned to user
+5. User calls `claimMiningReward()` to receive newly minted reward tokens
+
+**Reward calculation:** Based on staked amount, time locked, and mining difficulty parameter. The exact formula is in the contract code.
+
+**Security considerations:**
+- Reentrancy protected on all mining functions
+- Users can only have one active mining session at a time
+- Rewards are minted, increasing total supply
+- Owner can adjust difficulty but cannot manipulate active stakes
+
+## Gas Costs
+
+Approximate costs on Base (actual costs vary with network conditions):
+
+| Operation | Gas Used |
+|-----------|----------|
+| Deploy | ~1.2M |
+| transfer | ~21k |
+| approve | ~46k |
+| startMining | ~55k |
+| completeMining | ~40k |
+| claimMiningReward | ~35k |
+| burn | ~29k |
+
+Base has significantly lower gas costs than Ethereum mainnet, typically 10-100x cheaper.
+
+## Security Audit Notes
+
+This contract has not been professionally audited. Key security considerations:
+
+**Strengths:**
+- Uses OpenZeppelin's audited base contracts
+- Solidity 0.8.30 has built-in overflow protection
+- ReentrancyGuard on state-changing functions
+- Proper access control with Ownable
+- No delegatecall or selfdestruct
+- Events for all significant state changes
+
+**Potential concerns:**
+- Mining reward calculation could inflate supply unexpectedly if parameters are misconfigured
+- `emergencyMint` is a centralization risk (owner can mint up to 1M tokens per call)
+- No pause mechanism if issues are discovered
+- Immutable liquidity wallet cannot be changed if private key is lost
+- Mining difficulty adjustment by owner could affect user rewards mid-stake
+
+**Recommendations before production:**
+- Third-party audit, especially mining logic
+- Timelocks on admin functions
+- Consider adding a pause mechanism
+- Test mining economics extensively on testnet
+- Monitor supply inflation from mining rewards
+
+## Common Issues
+
+**"Insufficient balance for transfer"**
+- Check token balance: `blanToken.balanceOf(address)`
+- Tokens may be staked in mining
+
+**"Mining already active"**
+- Complete current mining session first
+- One mining session per address at a time
+
+**"Mining period not complete"**
+- Wait for the required time period
+- Check `getMiningStatus()` for timing details
+
+**Deployment fails on mainnet**
+- Verify you have Base ETH for gas
+- Check RPC URL is correct
+- Confirm private key format (with or without 0x prefix)
 
 
+## Network Information
 
+**Base Mainnet:**
+- Chain ID: 8453
+- RPC: https://mainnet.base.org
+- Explorer: https://basescan.org
+- Native Token: ETH
 
-## 📄 License
+**Base Sepolia Testnet:**
+- Chain ID: 84532  
+- RPC: https://sepolia.base.org
+- Explorer: https://sepolia.basescan.org
+- Faucet: https://www.coinbase.com/faucets/base-ethereum-sepolia-faucet
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Add to MetaMask manually if not auto-detected.
 
-## ⚠️ Disclaimer
+## Contributing
 
-This smart contract is provided as-is. While extensively tested and following security best practices, users should:
+Contributions welcome. Before submitting PRs:
 
-1. **Conduct thorough testing** before mainnet deployment
-2. **Consider professional audit** for production use
-3. **Understand the risks** associated with smart contracts
-4. **Test on testnets** before mainnet deployment
+1. Run full test suite
+2. Add tests for new features
+3. Update documentation
+4. Follow existing code style
+5. Explain the problem your PR solves
 
+Focus areas for contribution:
+- Additional test coverage
+- Gas optimizations
+- Documentation improvements
+- Bug reports with reproduction steps
 
-## 📊 Contract Addresses
+## License
 
-### Mainnet (Base)
-- **Contract Address**: `TBD` (To Be Deployed)
-- **Liquidity Wallet**: `TBD` (To Be deployment)
+MIT License - see LICENSE file
 
-### Testnet (Base Sepolia)
-- **Contract Address**: `TBD` (For testing purposes)
+## Disclaimer
 
----
-
-**Built with ❤️ for the Base ecosystem**
-
-
-ready to use
+ The authors are not responsible for lost funds, bugs, or security vulnerabilities.
