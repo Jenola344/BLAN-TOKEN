@@ -10,5 +10,6 @@
     "truffle-flattener": "^1.2.11",
     "viem": "^2.39.0",
     "wagmi": "^1.4.13"
-  }
+  },
+  "type": "module"
 }
