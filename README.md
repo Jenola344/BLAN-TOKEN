@@ -134,7 +134,7 @@ This contract has not been professionally audited. Key security considerations:
 
 Add to MetaMask manually if not auto-detected.
 
-## Contributing : Open for all
+## Contributing : Open for all either you are frontend developer, backend developer, smart contract developer or full-stack developer
 
 Contributions welcome. Before submitting PRs:
 
