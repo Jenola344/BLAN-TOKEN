@@ -150,6 +150,9 @@ Focus areas for contribution:
 - Documentation improvements
 - Bug reports with reproduction steps
 
+## Support
+For questions or support, please open an issue in the project repository.
+
 ## License
 
 MIT License - see LICENSE file
