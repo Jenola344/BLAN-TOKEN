@@ -1,0 +1,556 @@
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+const { time } = require("@nomicfoundation/hardhat-network-helpers");
+
+describe("BLANTokenV2", function () {
+  let blanToken;
+  let owner;
+  let liquidityWallet;
+  let user1;
+  let user2;
+  
+  const INITIAL_DIFFICULTY = ethers.parseEther("1000");
+  const SEVEN_DAYS = 7 * 24 * 60 * 60;
+  const THIRTY_DAYS = 30 * 24 * 60 * 60;
+  const NINETY_DAYS = 90 * 24 * 60 * 60;
+
+  beforeEach(async function () {
+    [owner, liquidityWallet, user1, user2] = await ethers.getSigners();
+
+    const BLANToken = await ethers.getContractFactory("BLANTokenV2");
+    blanToken = await BLANToken.deploy(
+      liquidityWallet.address,
+      INITIAL_DIFFICULTY
+    );
+    await blanToken.waitForDeployment();
+
+    // Transfer tokens to users for testing
+    await blanToken.transfer(user1.address, ethers.parseEther("100000"));
+    await blanToken.transfer(user2.address, ethers.parseEther("100000"));
+  });
+
+  describe("Deployment", function () {
+    it("Should set the right owner", async function () {
+      expect(await blanToken.owner()).to.equal(owner.address);
+    });
+
+    it("Should assign initial supply correctly", async function () {
+      const ownerBalance = await blanToken.balanceOf(owner.address);
+      const liquidityBalance = await blanToken.balanceOf(liquidityWallet.address);
+      
+      expect(liquidityBalance).to.equal(ethers.parseEther("500000"));
+      expect(ownerBalance).to.be.gt(ethers.parseEther("9000000"));
+    });
+
+    it("Should set immutable liquidity wallet", async function () {
+      expect(await blanToken.liquidityWallet()).to.equal(liquidityWallet.address);
+    });
+
+    it("Should initialize mining tiers", async function () {
+      const tier0 = await blanToken.getTierInfo(0);
+      expect(tier0.duration).to.equal(SEVEN_DAYS);
+      expect(tier0.active).to.be.true;
+      
+      const tier1 = await blanToken.getTierInfo(1);
+      expect(tier1.duration).to.equal(THIRTY_DAYS);
+      
+      const tier2 = await blanToken.getTierInfo(2);
+      expect(tier2.duration).to.equal(NINETY_DAYS);
+    });
+  });
+
+  describe("Mining - Basic Flow", function () {
+    it("Should start mining session successfully", async function () {
+      const stakeAmount = ethers.parseEther("1000");
+      
+      await blanToken.connect(user1).startMining(stakeAmount, 0);
+      
+      const sessions = await blanToken.getUserSessions(user1.address);
+      expect(sessions.length).to.equal(1);
+      expect(sessions[0].amount).to.equal(stakeAmount);
+      expect(sessions[0].active).to.be.true;
+      expect(sessions[0].tier).to.equal(0);
+      
+      // Check tokens transferred to contract
+      const contractBalance = await blanToken.balanceOf(await blanToken.getAddress());
+      expect(contractBalance).to.equal(stakeAmount);
+    });
+
+    it("Should reject mining with insufficient amount", async function () {
+      await expect(
+        blanToken.connect(user1).startMining(ethers.parseEther("50"), 0)
+      ).to.be.revertedWith("Below minimum stake");
+    });
+
+    it("Should reject invalid tier", async function () {
+      await expect(
+        blanToken.connect(user1).startMining(ethers.parseEther("1000"), 5)
+      ).to.be.revertedWith("Invalid tier");
+    });
+
+    it("Should allow multiple mining sessions", async function () {
+      await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+      await blanToken.connect(user1).startMining(ethers.parseEther("2000"), 1);
+      await blanToken.connect(user1).startMining(ethers.parseEther("3000"), 2);
+      
+      const activeCount = await blanToken.getActiveSessionCount(user1.address);
+      expect(activeCount).to.equal(3);
+    });
+
+    it("Should limit max active sessions to 5", async function () {
+      for (let i = 0; i < 5; i++) {
+        await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+      }
+      
+      await expect(
+        blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0)
+      ).to.be.revertedWith("Max 5 active sessions");
+    });
+  });
+
+  describe("Mining - Completion", function () {
+    beforeEach(async function () {
+      await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+    });
+
+    it("Should complete mining after period", async function () {
+      await time.increase(SEVEN_DAYS + 1);
+      
+      await blanToken.connect(user1).completeMining(0);
+      
+      const sessions = await blanToken.getUserSessions(user1.address);
+      expect(sessions[0].active).to.be.false;
+      
+      // Check tokens returned
+      const userBalance = await blanToken.balanceOf(user1.address);
+      expect(userBalance).to.equal(ethers.parseEther("100000"));
+    });
+
+    it("Should reject completion before period ends", async function () {
+      await expect(
+        blanToken.connect(user1).completeMining(0)
+      ).to.be.revertedWith("Mining period not complete");
+    });
+
+    it("Should reject completion of invalid session", async function () {
+      await expect(
+        blanToken.connect(user1).completeMining(999)
+      ).to.be.revertedWith("Invalid session");
+    });
+
+    it("Should reject double completion", async function () {
+      await time.increase(SEVEN_DAYS + 1);
+      await blanToken.connect(user1).completeMining(0);
+      
+      await expect(
+        blanToken.connect(user1).completeMining(0)
+      ).to.be.revertedWith("Session not active");
+    });
+  });
+
+  describe("Mining - Rewards", function () {
+    it("Should calculate rewards correctly", async function () {
+      const stakeAmount = ethers.parseEther("1000");
+      const tier = 0;
+      
+      await blanToken.connect(user1).startMining(stakeAmount, tier);
+      await time.increase(SEVEN_DAYS + 1);
+      await blanToken.connect(user1).completeMining(0);
+      
+      const sessions = await blanToken.getUserSessions(user1.address);
+      const reward = await blanToken.calculateReward(
+        sessions[0].amount,
+        sessions[0].startTime,
+        sessions[0].endTime,
+        sessions[0].tier
+      );
+      
+      expect(reward).to.be.gt(0);
+      
+      await blanToken.connect(user1).claimMiningReward(0);
+      
+      const updatedSessions = await blanToken.getUserSessions(user1.address);
+      expect(updatedSessions[0].rewardClaimed).to.equal(reward);
+    });
+
+    it("Should mint rewards to user", async function () {
+      await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+      await time.increase(SEVEN_DAYS + 1);
+      await blanToken.connect(user1).completeMining(0);
+      
+      const balanceBefore = await blanToken.balanceOf(user1.address);
+      await blanToken.connect(user1).claimMiningReward(0);
+      const balanceAfter = await blanToken.balanceOf(user1.address);
+      
+      expect(balanceAfter).to.be.gt(balanceBefore);
+    });
+
+    it("Should reject claiming reward twice", async function () {
+      await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+      await time.increase(SEVEN_DAYS + 1);
+      await blanToken.connect(user1).completeMining(0);
+      await blanToken.connect(user1).claimMiningReward(0);
+      
+      await expect(
+        blanToken.connect(user1).claimMiningReward(0)
+      ).to.be.revertedWith("Reward already claimed");
+    });
+
+    it("Should reject claiming before completion", async function () {
+      await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+      
+      await expect(
+        blanToken.connect(user1).claimMiningReward(0)
+      ).to.be.revertedWith("Complete mining first");
+    });
+
+    it("Should track total mining rewards", async function () {
+      await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+      await time.increase(SEVEN_DAYS + 1);
+      await blanToken.connect(user1).completeMining(0);
+      
+      const rewardsBefore = await blanToken.getTotalMiningRewards();
+      await blanToken.connect(user1).claimMiningReward(0);
+      const rewardsAfter = await blanToken.getTotalMiningRewards();
+      
+      expect(rewardsAfter).to.be.gt(rewardsBefore);
+    });
+  });
+
+  describe("Early Withdrawal", function () {
+    it("Should allow early withdrawal with penalty", async function () {
+      const stakeAmount = ethers.parseEther("1000");
+      await blanToken.connect(user1).startMining(stakeAmount, 0);
+      
+      await time.increase(SEVEN_DAYS / 2); // Halfway through
+      
+      const balanceBefore = await blanToken.balanceOf(user1.address);
+      await blanToken.connect(user1).withdrawEarly(0);
+      const balanceAfter = await blanToken.balanceOf(user1.address);
+      
+      // Should receive 80% back (20% penalty)
+      const expectedReturn = (stakeAmount * 80n) / 100n;
+      const actualReturn = balanceAfter - balanceBefore;
+      
+      expect(actualReturn).to.equal(expectedReturn);
+    });
+
+    it("Should mark session as inactive after withdrawal", async function () {
+      await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+      await blanToken.connect(user1).withdrawEarly(0);
+      
+      const sessions = await blanToken.getUserSessions(user1.address);
+      expect(sessions[0].active).to.be.false;
+    });
+
+    it("Should decrease active session count", async function () {
+      await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+      await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 1);
+      
+      expect(await blanToken.getActiveSessionCount(user1.address)).to.equal(2);
+      
+      await blanToken.connect(user1).withdrawEarly(0);
+      
+      expect(await blanToken.getActiveSessionCount(user1.address)).to.equal(1);
+    });
+  });
+
+  describe("Tier System", function () {
+    it("Should apply correct multipliers for different tiers", async function () {
+      const stakeAmount = ethers.parseEther("1000");
+      
+      // Start 3 sessions with different tiers
+      await blanToken.connect(user1).startMining(stakeAmount, 0);
+      await blanToken.connect(user1).startMining(stakeAmount, 1);
+      await blanToken.connect(user1).startMining(stakeAmount, 2);
+      
+      // Fast forward and complete all
+      await time.increase(NINETY_DAYS + 1);
+      
+      await blanToken.connect(user1).completeMining(0);
+      await blanToken.connect(user1).completeMining(1);
+      await blanToken.connect(user1).completeMining(2);
+      
+      const sessions = await blanToken.getUserSessions(user1.address);
+      
+      const reward0 = await blanToken.calculateReward(
+        sessions[0].amount, sessions[0].startTime, sessions[0].endTime, 0
+      );
+      const reward1 = await blanToken.calculateReward(
+        sessions[1].amount, sessions[1].startTime, sessions[1].endTime, 1
+      );
+      const reward2 = await blanToken.calculateReward(
+        sessions[2].amount, sessions[2].startTime, sessions[2].endTime, 2
+      );
+      
+      // Tier 2 should have highest rewards (2x multiplier)
+      expect(reward2).to.be.gt(reward1);
+      expect(reward1).to.be.gt(reward0);
+    });
+
+    it("Should enforce minimum stake for each tier", async function () {
+      await expect(
+        blanToken.connect(user1).startMining(ethers.parseEther("50"), 0)
+      ).to.be.revertedWith("Below minimum stake");
+      
+      await expect(
+        blanToken.connect(user1).startMining(ethers.parseEther("400"), 1)
+      ).to.be.revertedWith("Below minimum stake");
+      
+      await expect(
+        blanToken.connect(user1).startMining(ethers.parseEther("900"), 2)
+      ).to.be.revertedWith("Below minimum stake");
+    });
+  });
+
+  describe("Admin Functions - Timelock", function () {
+    it("Should propose difficulty change", async function () {
+      const newDifficulty = ethers.parseEther("1100");
+      
+      await blanToken.proposeDifficultyChange(newDifficulty);
+      
+      const actionId = ethers.keccak256(ethers.toUtf8Bytes("DIFFICULTY_CHANGE"));
+      const action = await blanToken.pendingActions(actionId);
+      
+      expect(action.newValue).to.equal(newDifficulty);
+      expect(action.executed).to.be.false;
+    });
+
+    it("Should reject difficulty change exceeding max percent", async function () {
+      const tooHighDifficulty = ethers.parseEther("2000"); // 100% increase
+      
+      await expect(
+        blanToken.proposeDifficultyChange(tooHighDifficulty)
+      ).to.be.revertedWith("Change exceeds max percent");
+    });
+
+    it("Should execute difficulty change after timelock", async function () {
+      const newDifficulty = ethers.parseEther("1050");
+      
+      await blanToken.proposeDifficultyChange(newDifficulty);
+      await time.increase(2 * 24 * 60 * 60 + 1); // 2 days + 1 second
+      
+      await blanToken.executeDifficultyChange();
+      
+      expect(await blanToken.miningDifficulty()).to.equal(newDifficulty);
+    });
+
+    it("Should reject execution before timelock expires", async function () {
+      const newDifficulty = ethers.parseEther("1050");
+      
+      await blanToken.proposeDifficultyChange(newDifficulty);
+      
+      await expect(
+        blanToken.executeDifficultyChange()
+      ).to.be.revertedWith("Timelock not expired");
+    });
+
+    it("Should reject double execution", async function () {
+      const newDifficulty = ethers.parseEther("1050");
+      
+      await blanToken.proposeDifficultyChange(newDifficulty);
+      await time.increase(2 * 24 * 60 * 60 + 1);
+      await blanToken.executeDifficultyChange();
+      
+      await expect(
+        blanToken.executeDifficultyChange()
+      ).to.be.revertedWith("Already executed");
+    });
+  });
+
+  describe("Admin Functions - Tier Management", function () {
+    it("Should update tier parameters", async function () {
+      await blanToken.updateTier(
+        0, // tier
+        14 * 24 * 60 * 60, // 14 days
+        15000, // 1.5x multiplier
+        ethers.parseEther("200"),
+        true
+      );
+      
+      const tier = await blanToken.getTierInfo(0);
+      expect(tier.duration).to.equal(14 * 24 * 60 * 60);
+      expect(tier.rewardMultiplier).to.equal(15000);
+      expect(tier.minStake).to.equal(ethers.parseEther("200"));
+    });
+
+    it("Should reject invalid tier", async function () {
+      await expect(
+        blanToken.updateTier(5, 7 * 24 * 60 * 60, 12000, ethers.parseEther("100"), true)
+      ).to.be.revertedWith("Invalid tier");
+    });
+
+    it("Should reject invalid multiplier", async function () {
+      await expect(
+        blanToken.updateTier(0, 7 * 24 * 60 * 60, 5000, ethers.parseEther("100"), true)
+      ).to.be.revertedWith("Invalid multiplier");
+      
+      await expect(
+        blanToken.updateTier(0, 7 * 24 * 60 * 60, 60000, ethers.parseEther("100"), true)
+      ).to.be.revertedWith("Invalid multiplier");
+    });
+  });
+
+  describe("Emergency Mint", function () {
+    it("Should allow emergency mint within limits", async function () {
+      const mintAmount = ethers.parseEther("100000");
+      const balanceBefore = await blanToken.balanceOf(user1.address);
+      
+      await blanToken.emergencyMint(user1.address, mintAmount);
+      
+      const balanceAfter = await blanToken.balanceOf(user1.address);
+      expect(balanceAfter - balanceBefore).to.equal(mintAmount);
+    });
+
+    it("Should reject mint exceeding max emergency mint", async function () {
+      const tooMuch = ethers.parseEther("1000001");
+      
+      await expect(
+        blanToken.emergencyMint(user1.address, tooMuch)
+      ).to.be.revertedWith("Exceeds max emergency mint");
+    });
+
+    it("Should respect daily mint limit", async function () {
+      await blanToken.emergencyMint(user1.address, ethers.parseEther("400000"));
+      
+      await expect(
+        blanToken.emergencyMint(user1.address, ethers.parseEther("200000"))
+      ).to.be.revertedWith("Daily mint limit exceeded");
+    });
+
+    it("Should reset daily mint limit after 24 hours", async function () {
+      await blanToken.emergencyMint(user1.address, ethers.parseEther("400000"));
+      
+      await time.increase(24 * 60 * 60 + 1);
+      
+      // Should succeed now
+      await blanToken.emergencyMint(user1.address, ethers.parseEther("100000"));
+    });
+
+    it("Should only allow owner to emergency mint", async function () {
+      await expect(
+        blanToken.connect(user1).emergencyMint(user1.address, ethers.parseEther("1000"))
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+    });
+  });
+
+  describe("Pausable", function () {
+    it("Should pause and unpause", async function () {
+      await blanToken.pause();
+      expect(await blanToken.paused()).to.be.true;
+      
+      await blanToken.unpause();
+      expect(await blanToken.paused()).to.be.false;
+    });
+
+    it("Should prevent mining when paused", async function () {
+      await blanToken.pause();
+      
+      await expect(
+        blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0)
+      ).to.be.revertedWith("Pausable: paused");
+    });
+
+    it("Should prevent reward claims when paused", async function () {
+      await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+      await time.increase(SEVEN_DAYS + 1);
+      await blanToken.connect(user1).completeMining(0);
+      
+      await blanToken.pause();
+      
+      await expect(
+        blanToken.connect(user1).claimMiningReward(0)
+      ).to.be.revertedWith("Pausable: paused");
+    });
+
+    it("Should allow completion even when paused", async function () {
+      await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+      await time.increase(SEVEN_DAYS + 1);
+      
+      await blanToken.pause();
+      
+      // Should still allow completion to unlock funds
+      await blanToken.connect(user1).completeMining(0);
+    });
+  });
+
+  describe("View Functions", function () {
+    it("Should return remaining daily mint correctly", async function () {
+      const remaining1 = await blanToken.getRemainingDailyMint();
+      expect(remaining1).to.equal(ethers.parseEther("500000"));
+      
+      await blanToken.emergencyMint(user1.address, ethers.parseEther("100000"));
+      
+      const remaining2 = await blanToken.getRemainingDailyMint();
+      expect(remaining2).to.equal(ethers.parseEther("400000"));
+    });
+
+    it("Should return total mining rewards", async function () {
+      const totalBefore = await blanToken.getTotalMiningRewards();
+      
+      await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+      await time.increase(SEVEN_DAYS + 1);
+      await blanToken.connect(user1).completeMining(0);
+      await blanToken.connect(user1).claimMiningReward(0);
+      
+      const totalAfter = await blanToken.getTotalMiningRewards();
+      expect(totalAfter).to.be.gt(totalBefore);
+    });
+  });
+
+  describe("Gas Optimization Tests", function () {
+    it("Should measure gas for startMining", async function () {
+      const tx = await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+      const receipt = await tx.wait();
+      console.log("startMining gas used:", receipt.gasUsed.toString());
+    });
+
+    it("Should measure gas for completeMining", async function () {
+      await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+      await time.increase(SEVEN_DAYS + 1);
+      
+      const tx = await blanToken.connect(user1).completeMining(0);
+      const receipt = await tx.wait();
+      console.log("completeMining gas used:", receipt.gasUsed.toString());
+    });
+
+    it("Should measure gas for claimMiningReward", async function () {
+      await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+      await time.increase(SEVEN_DAYS + 1);
+      await blanToken.connect(user1).completeMining(0);
+      
+      const tx = await blanToken.connect(user1).claimMiningReward(0);
+      const receipt = await tx.wait();
+      console.log("claimMiningReward gas used:", receipt.gasUsed.toString());
+    });
+  });
+
+  describe("Edge Cases", function () {
+    it("Should handle zero reward scenario gracefully", async function () {
+      // Set difficulty very high to make rewards near zero
+      await blanToken.proposeDifficultyChange(ethers.parseEther("1000000"));
+      await time.increase(2 * 24 * 60 * 60 + 1);
+      await blanToken.executeDifficultyChange();
+      
+      await blanToken.connect(user1).startMining(ethers.parseEther("100"), 0);
+      await time.increase(SEVEN_DAYS + 1);
+      await blanToken.connect(user1).completeMining(0);
+      
+      // Should not revert even with tiny rewards
+      await blanToken.connect(user1).claimMiningReward(0);
+    });
+
+    it("Should handle concurrent sessions correctly", async function () {
+      await blanToken.connect(user1).startMining(ethers.parseEther("1000"), 0);
+      await blanToken.connect(user1).startMining(ethers.parseEther("2000"), 1);
+      
+      await time.increase(SEVEN_DAYS + 1);
+      await blanToken.connect(user1).completeMining(0);
+      
+      // Session 1 should still be active
+      const sessions = await blanToken.getUserSessions(user1.address);
+      expect(sessions[0].active).to.be.false;
+      expect(sessions[1].active).to.be.true;
+    });
+  });
+});
